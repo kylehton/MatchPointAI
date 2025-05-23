@@ -16,8 +16,7 @@ def load_data(directory):
         dataframes.append(df)
     return pd.concat(dataframes, ignore_index=True)
 
-def calculate_player_stats(df, window=10):
-    """Calculate rolling statistics for each player"""
+def calculate_player_stats(df, window=10): 
     df = df.copy()
     df = df.sort_values('tourney_date')
     
