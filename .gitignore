@@ -1,4 +1,5 @@
 /.venv/
+.env
 
 /data/.gitattributes
 /data/matches_data_dictionary.txt
