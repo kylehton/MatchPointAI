@@ -2,12 +2,16 @@ import numpy as np
 import pandas as pd
 import os
 from tqdm import tqdm
-from sqlalchemy import create_engine, String, Integer, Float, Date, text
+from sqlalchemy import insert, create_engine, Table, MetaData, text
+
 import dotenv
 
 dotenv.load_dotenv()
 
-def load_data(directory):
+sql_engine = create_engine(os.getenv('POSTGRES_NEON_STRING'))
+player_table = os.getenv("PLAYER_TABLE")
+
+def load_data(directory: str):
     """Load all match data from CSV files in the directory"""
     print("Loading data files...")
     dataframes = []
@@ -18,99 +22,78 @@ def load_data(directory):
         dataframes.append(df)
     return pd.concat(dataframes, ignore_index=True)
 
+def create_player_rows():
+    metadata = MetaData()
+    # Reflect the existing table from the DB
+    players = Table(player_table, metadata, autoload_with=sql_engine)
 
-#TODO: Correctly parse data from files into stats
-def calculate_player_stats(df):
-    player_stats = {
-        # Basic Info
-        'player_name': str,
-        'current_rank': int,
-        'current_rank_points': int,
-        'age': float,
-        'height': float,
-        'hand': str,
-        
-        # Overall Performance
-        'overall_win_rate': float,  # Career win rate
-        'recent_win_rate': float,   # Last 12 months
-        'matches_played': int,      # Total matches
-        'recent_matches': int,      # Matches in last 12 months
-        
-        # Surface-Specific Stats
-        'hard_win_rate': float,
-        'clay_win_rate': float,
-        'grass_win_rate': float,
-        'recent_hard_win_rate': float,
-        'recent_clay_win_rate': float,
-        'recent_grass_win_rate': float,
-        
-        # Match Performance Metrics
-        'avg_aces_per_match': float,
-        'avg_double_faults_per_match': float,
-        'avg_first_serve_percentage': float,
-        'avg_first_serve_won_percentage': float,
-        'avg_second_serve_won_percentage': float,
-        'avg_break_points_saved_percentage': float,
-        'avg_break_points_converted_percentage': float,
-        
-        # Recent Form (last 3 months)
-        'recent_avg_aces': float,
-        'recent_avg_double_faults': float,
-        'recent_avg_first_serve': float,
-        'recent_avg_first_serve_won': float,
-        'recent_avg_second_serve_won': float,
-        'recent_avg_break_points_saved': float,
-        'recent_avg_break_points_converted': float,
-        
-        # Tournament Level Performance
-        'grand_slam_win_rate': float,
-        'masters_win_rate': float,
-        'atp_win_rate': float,
-        
-    }
+    # Reset the sequence and clear existing data
+    with sql_engine.connect() as conn:
+        # Delete all existing data
+        conn.execute(players.delete())
+        # Reset the sequence to 1 using text()
+        conn.execute(text(f"ALTER SEQUENCE {player_table}_id_seq RESTART WITH 1"))
+        conn.commit()
+        print("Reset table and sequence")
 
-def create_match_features(player1_stats, player2_stats, match_info):
-    """Create features for a specific match prediction"""
-    features = {
-        # Basic Match Info
-        'surface': str,
-        'tournament_level': str,
-        'round': str,
-        
-        # Player Comparison Features
-        'rank_diff': int,  # player1_rank - player2_rank
-        'rank_points_diff': int,
-        'age_diff': float,
-        'height_diff': float,
-        'hand_matchup': str,  # e.g., 'R-R', 'L-R'
-        
-        # Win Rate Differences
-        'overall_win_rate_diff': float,
-        'recent_win_rate_diff': float,
-        'surface_win_rate_diff': float,  # specific to match surface
-        'recent_surface_win_rate_diff': float,
-        
-        # Performance Metric Differences
-        'aces_per_match_diff': float,
-        'double_faults_per_match_diff': float,
-        'first_serve_percentage_diff': float,
-        'first_serve_won_percentage_diff': float,
-        'second_serve_won_percentage_diff': float,
-        'break_points_saved_percentage_diff': float,
-        'break_points_converted_percentage_diff': float,
-        
-        # Recent Form Differences
-        'recent_aces_diff': float,
-        'recent_double_faults_diff': float,
-        'recent_first_serve_diff': float,
-        'recent_first_serve_won_diff': float,
-        'recent_second_serve_won_diff': float,
-        'recent_break_points_saved_diff': float,
-        'recent_break_points_converted_diff': float,
-        
-        # Tournament Level Differences
-        'tournament_level_win_rate_diff': float,
-        'round_win_rate_diff': float,
-        
-    }
+    # Read CSV with explicit dtype for name columns to ensure they're strings
+    all_players = pd.read_csv('data/atp_players.csv', 
+                            dtype={'name_first': str, 'name_last': str},
+                            low_memory=False)
+    
+    print(f"Total players in CSV: {len(all_players)}")
+    print("\nSample of raw data:")
+    print(all_players[['name_first', 'name_last', 'hand', 'height']].head())
 
+    # Process the data in pandas first
+    all_players['player_name'] = all_players.apply(
+        lambda row: f"{'' if pd.isna(row['name_first']) else row['name_first']} {'' if pd.isna(row['name_last']) else row['name_last']}".strip(),
+        axis=1
+    )
+    
+    # Check for empty names
+    empty_names = all_players[all_players['player_name'].str.len() == 0]
+    print(f"\nPlayers with empty names: {len(empty_names)}")
+    if len(empty_names) > 0:
+        print("Sample of empty names:")
+        print(empty_names[['name_first', 'name_last']].head())
+
+    # Convert hand to integer (1 for R, 0 for L)
+    all_players['hand'] = (all_players['hand'] == 'R').astype(int)
+    # Convert height to numeric, keeping NaN values
+    all_players['height'] = pd.to_numeric(all_players['height'], errors='coerce')
+
+    # Filter out rows with no valid name
+    valid_players = all_players[all_players['player_name'].str.len() > 0].copy()
+    print(f"\nPlayers after filtering empty names: {len(valid_players)}")
+    
+    # Prepare the data for bulk insert, ensuring proper types
+    records = []
+    for _, row in valid_players.iterrows():
+        record = {
+            'name': row['player_name'],
+            'hand': int(row['hand']),
+            'height': None if pd.isna(row['height']) else float(row['height'])
+        }
+        records.append(record)
+
+    print(f"\nFinal number of records to insert: {len(records)}")
+    print("\nSample of records to be inserted:")
+    for record in records[:5]:
+        print(record)
+
+    # Perform bulk insert
+    with sql_engine.connect() as conn:
+        conn.execute(insert(players), records)
+        conn.commit()
+        
+    # Verify the number of inserted records
+    with sql_engine.connect() as conn:
+        result = conn.execute(players.select()).fetchall()
+        print(f"\nNumber of records in database after insert: {len(result)}")
+
+
+def create_player_statistics(df):
+    pass
+
+create_player_rows()
