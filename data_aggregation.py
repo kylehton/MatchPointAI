@@ -7,18 +7,13 @@ from tqdm import tqdm
 
 class TennisPlayerAggregator:
     def __init__(self, data_path=None):
-        """
-        Initialize the aggregator
-        data_path: path to directory containing CSV files or list of file paths
-        """
+        
         self.data_path = data_path
         self.combined_data = None
         self.player_stats = None
         
     def load_datasets(self, file_pattern="*.csv"):
-        """
-        Load and combine multiple tennis datasets
-        """
+       
         if isinstance(self.data_path, list):
             # If list of file paths provided
             dataframes = []
@@ -53,10 +48,7 @@ class TennisPlayerAggregator:
         return self.combined_data
     
     def standardize_columns(self):
-        """
-        Standardize column names across different datasets
-        Adjust this based on your specific data structure
-        """
+        
         # Example column mappings - adjust based on your data
         column_mappings = {
             'winner_name': 'winner_name',
@@ -136,10 +128,6 @@ class TennisPlayerAggregator:
         return all_player_records
     
     def calculate_rolling_stats(self, player_records, window_size=20):
-        """
-        Calculate rolling averages for each player
-        window_size: number of matches to use for rolling average
-        """
         date_col = 'tourney_date' if 'tourney_date' in player_records.columns else 'date'
         
         # Group by player
@@ -148,49 +136,92 @@ class TennisPlayerAggregator:
         rolling_stats = []
         
         for player_name, player_data in tqdm(grouped, desc="Calculating rolling statistics"):
-            player_data = player_data.sort_values(date_col).copy()
-            
-            # Calculate rolling win rate
-            player_data['rolling_win_rate'] = player_data['won_match'].rolling(
-                window=window_size, min_periods=1
-            ).mean()
-            
-            # Calculate rolling win rate by surface
-            for surface in tqdm(['Hard', 'Clay', 'Grass'], desc="Calculating rolling win rate by surface"):
-                surface_mask = player_data['surface'] == surface
-                if surface_mask.sum() > 0:
-                    surface_data = player_data[surface_mask].copy()
-                    if len(surface_data) > 0:
-                        rolling_surface_wr = surface_data['won_match'].rolling(
-                            window=min(window_size, len(surface_data)), min_periods=1
-                        ).mean()
-                        # Map back to original dataframe
-                        player_data.loc[surface_mask, f'rolling_win_rate_{surface.lower()}'] = rolling_surface_wr
-            
-            # Calculate rolling serve statistics
-            serve_stats = ['1st_serve_in', '1st_serve_won', '2nd_serve_won']
-            for stat in tqdm(serve_stats, desc="Calculating rolling serve statistics"):
-                col_name = f'player_{stat}'
-                if col_name in player_data.columns:
-                    # Convert to numeric and handle percentages
-                    player_data[col_name] = pd.to_numeric(player_data[col_name], errors='coerce')
-                    player_data[f'rolling_{stat}'] = player_data[col_name].rolling(
-                        window=window_size, min_periods=1
-                    ).mean()
-            
-            # Calculate rolling rank (best rank achieved in window)
-            player_data['rolling_best_rank'] = player_data['player_rank'].rolling(
-                window=window_size, min_periods=1
-            ).min()
-            
-            rolling_stats.append(player_data)
+            try:
+                player_data = player_data.sort_values(date_col).copy()
+                
+                # Calculate rolling win rate
+                player_data['rolling_win_rate'] = player_data['won_match'].rolling(
+                    window=window_size, min_periods=1
+                ).mean()
+                
+                # Calculate rolling win rate by surface - FIXED VERSION
+                for surface in ['Hard', 'Clay', 'Grass']:
+                    # Create surface-specific rolling stats
+                    surface_mask = player_data['surface'].str.strip().str.title() == surface
+                    
+                    if surface_mask.sum() > 0:
+                        # Initialize column with NaN
+                        player_data[f'rolling_win_rate_{surface.lower()}'] = np.nan
+                        
+                        # Calculate rolling win rate only for matches on this surface
+                        surface_indices = player_data[surface_mask].index
+                        surface_wins = player_data.loc[surface_indices, 'won_match']
+                        
+                        if len(surface_wins) > 0:
+                            rolling_surface_wr = surface_wins.rolling(
+                                window=min(window_size, len(surface_wins)), 
+                                min_periods=1
+                            ).mean()
+                            
+                            # Assign back to the correct indices
+                            player_data.loc[surface_indices, f'rolling_win_rate_{surface.lower()}'] = rolling_surface_wr.values
+                    else:
+                        # No matches on this surface
+                        player_data[f'rolling_win_rate_{surface.lower()}'] = np.nan
+                
+                # Calculate rolling serve statistics - FIXED VERSION
+                serve_stats = ['1st_serve_in', '1st_serve_won', '2nd_serve_won']
+                for stat in serve_stats:
+                    col_name = f'player_{stat}'
+                    if col_name in player_data.columns:
+                        # Convert to numeric and handle missing values
+                        numeric_col = pd.to_numeric(player_data[col_name], errors='coerce')
+                        
+                        # Only calculate if we have valid numeric data
+                        if not numeric_col.isna().all():
+                            player_data[f'rolling_{stat}'] = numeric_col.rolling(
+                                window=window_size, min_periods=1
+                            ).mean()
+                        else:
+                            player_data[f'rolling_{stat}'] = np.nan
+                    else:
+                        # Column doesn't exist
+                        player_data[f'rolling_{stat}'] = np.nan
+                
+                # Calculate rolling rank (best rank achieved in window) - FIXED VERSION
+                if 'player_rank' in player_data.columns:
+                    numeric_rank = pd.to_numeric(player_data['player_rank'], errors='coerce')
+                    if not numeric_rank.isna().all():
+                        player_data['rolling_best_rank'] = numeric_rank.rolling(
+                            window=window_size, min_periods=1
+                        ).min()
+                    else:
+                        player_data['rolling_best_rank'] = np.nan
+                else:
+                    player_data['rolling_best_rank'] = np.nan
+                
+                rolling_stats.append(player_data)
+                
+            except Exception as e:
+                print(f"Error processing player {player_name}: {str(e)}")
+                # Continue with next player instead of failing completely
+                continue
         
-        return pd.concat(rolling_stats, ignore_index=True)
+        if not rolling_stats:
+            print("ERROR: No player data was successfully processed!")
+            return pd.DataFrame()
     
+        try:
+            result = pd.concat(rolling_stats, ignore_index=True)
+            print(f"Successfully processed {len(rolling_stats)} players")
+            return result
+        except Exception as e:
+            print(f"ERROR concatenating results: {str(e)}")
+            return pd.DataFrame()
+
+
     def aggregate_career_stats(self, rolling_data):
-        """
-        Aggregate career statistics for each player
-        """
+        
         date_col = 'tourney_date' if 'tourney_date' in rolling_data.columns else 'date'
         
         career_stats = []

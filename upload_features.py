@@ -99,7 +99,37 @@ def create_player_rows():
 # need to compute rolling averages for all avgs, since it is across time
 # will have features: average_1st_in, avg_1st_won, avg_2nd_in, avg_2nd_won, avg_ace, avg_df, avg_bp_faced, avp_bp_saved, 
 # highest_rank, overall_win_rate, and the 3 win rates by surface
-def upload_player_statistics(df):
+def upload_player_statistics():
+    metadata = MetaData()
+    # Reflect the existing table from the DB
+    players = Table(player_table, metadata, autoload_with=sql_engine)
+
     career_stats = pd.read_csv('tennis_career_stats.csv')
-    rolling_stats = pd.read_csv('tennis_rolling_stats.csv')
-    # TODO: upload these stats to neon database
+    #rolling_stats = pd.read_csv('tennis_rolling_data.csv')
+    
+    with sql_engine.connect() as conn:
+        for row in tqdm(career_stats.itertuples(index=False)):
+            # Extract values using dot notation for itertuples, more efficient than iterrows
+            conn.execute(
+                players.update().where(players.c.name == row.player_name).values(
+                    rank=('' if pd.isna(row.highest_ranking) else row.highest_ranking), 
+                    hard_court_wr=row.hard_rolling_win_rate_latest - row.hard_win_rate,
+                    relative_hard_wr=(row.hard_rolling_win_rate_latest - row.hard_win_rate) / max(row.hard_win_rate, 0.1),
+                    grass_court_wr=row.grass_rolling_win_rate_latest - row.grass_win_rate, 
+                    relative_grass_wr=(row.grass_rolling_win_rate_latest - row.grass_win_rate) / max(row.grass_win_rate, 0.1),
+                    clay_court_wr=row.clay_rolling_win_rate_latest - row.clay_win_rate, 
+                    relative_clay_wr=(row.clay_rolling_win_rate_latest - row.clay_win_rate) / max(row.clay_win_rate, 0.1),
+                    overall_wr=row.career_win_rate, 
+                    first_in=row.latest_rolling_1st_serve_in - row.career_avg_1st_serve_in,
+                    relative_first_in=(row.latest_rolling_1st_serve_in - row.career_avg_1st_serve_in) / max(row.career_avg_1st_serve_in, 0.1),
+                    first_won=row.latest_rolling_1st_serve_won - row.career_avg_1st_serve_won, 
+                    relative_first_won=(row.latest_rolling_1st_serve_won - row.career_avg_1st_serve_won) / max(row.career_avg_1st_serve_won, 0.1),
+                    second_won=row.latest_rolling_2nd_serve_won - row.career_avg_2nd_serve_won,
+                    relative_second_won=(row.latest_rolling_2nd_serve_won - row.career_avg_2nd_serve_won) / max(row.career_avg_2nd_serve_won, 0.1)
+                )
+            )
+        conn.commit()
+            
+
+upload_player_statistics()
+
