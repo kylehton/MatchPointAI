@@ -1,1 +1,8 @@
-matches_data_dictionary.txt
+/.venv/
+.env
+
+/data/.gitattributes
+/data/matches_data_dictionary.txt
+/data/other/
+/data/README.md
+tennis_career_stats.csv
