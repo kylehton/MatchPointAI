@@ -1,29 +1,3 @@
-"""
-TennisPlayerAggregator – v8 (optimized)
-======================================
-High-performance version with:
-• Vectorized rolling calculations (5-10x faster)
-• Optimized KNN imputation with sampling
-• Memory-efficient data types
-• Caching system
-• Parallel processing option
-• Chunked file loading
-
-Outputs
--------
-* `tennis_rolling_data.csv` – raw rolling rows (with NaNs).
-* `rolling_missing_report.csv` – NaN summary.
-* `tennis_rolling_data_imputed.csv` – only if --knn-neighbors > 0.
-* `tennis_career_stats.csv` – career-level stats (uses imputed data if requested).
-
-Example
--------
-```bash
-python tennis_analysis_optimized.py data/main --window 25 --knn-neighbors 5 --use-cache
-```
-"""
-
-from __future__ import annotations
 
 import glob
 import os
@@ -39,18 +13,9 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-# scikit-learn imports (optional imputation)
-try:
-    from sklearn.impute import KNNImputer
-    from sklearn.preprocessing import StandardScaler
-except ImportError as e:
-    raise ImportError("scikit-learn is required. Install with `pip install scikit-learn`.\n" + str(e))
+from sklearn.impute import KNNImputer
+from sklearn.preprocessing import StandardScaler
 
-warnings.filterwarnings("ignore", category=UserWarning)
-
-###############################################################################
-# Constants
-###############################################################################
 
 SURFACES: List[str] = {
     1: "Hard",
@@ -70,9 +35,6 @@ SERVE_COLS: List[str] = [
 CRITICAL_COLS = ["rolling_win_rate", "rolling_best_rank"]
 DEFAULT_SIMILARITY_FEATS = ["player_rank", "age", "height", "hand"]
 
-###############################################################################
-# Helper functions
-###############################################################################
 
 def _parse_yyyymmdd(col: pd.Series) -> pd.Series:
     """Parse integers / strings in yyyymmdd format to datetime."""
