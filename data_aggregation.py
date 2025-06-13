@@ -1,4 +1,3 @@
-
 import glob
 import os
 import warnings
@@ -111,12 +110,16 @@ def knn_imputation_tennis_optimized(
     
     # Filter out columns that are all NaN or non-numeric
     valid_stat_cols = []
+    rank_cols = []  # Track rank columns for rounding
     for col in stat_cols:
         # Convert to numeric if possible
         df_imp[col] = pd.to_numeric(df_imp[col], errors='coerce')
         # Check if column has any non-NaN values
         if df_imp[col].notna().any():
             valid_stat_cols.append(col)
+            # Identify rank columns for rounding
+            if 'rank' in col.lower():
+                rank_cols.append(col)
         else:
             print(f"Warning: Skipping column '{col}' - all values are NaN")
     
@@ -129,6 +132,8 @@ def knn_imputation_tennis_optimized(
     print(f"Using {len(sim_cols)} similarity features: {sim_cols}")
     print(f"Imputing {len(stat_cols)} statistical features: {stat_cols[:5]}..." + 
           (f" and {len(stat_cols)-5} more" if len(stat_cols) > 5 else ""))
+    if rank_cols:
+        print(f"Rank columns that will be rounded to integers: {rank_cols}")
 
     # Sample data if too large for efficient KNN
     use_sampling = len(df_imp) > max_sample_size
@@ -201,6 +206,11 @@ def knn_imputation_tennis_optimized(
         else:
             for idx, col in enumerate(stat_cols):
                 df_out[col] = imputed_stats[:, idx]
+                
+                # Round rank columns to integers
+                if col in rank_cols:
+                    df_out[col] = df_out[col].round().astype('Int64')  # Use Int64 to handle NaN values
+                    print(f"Rounded {col} to integers")
 
         print("✓ KNN imputation completed successfully")
         return df_out, cat_maps
@@ -558,9 +568,65 @@ class TennisPlayerAggregatorOptimized:
         career_basic.columns = ["career_start", "career_end", "total_matches", "total_wins", "career_win_rate", "highest_ranking"]
         career_basic = career_basic.reset_index()
         
-        # Surface-specific stats
+        # Get all rolling columns (excluding basic ones already handled)
+        rolling_cols = [col for col in df.columns if col.startswith('rolling_') and col not in ['rolling_win_rate', 'rolling_best_rank']]
+        
+        # Get all player-specific columns (like player_1st_serve_in, etc.)
+        player_cols = [col for col in df.columns if col.startswith('player_') and col not in ['player_name', 'player_rank']]
+        
+        # Get all opponent columns
+        opponent_cols = [col for col in df.columns if col.startswith('opponent_') and col not in ['opponent_name']]
+        
+        # Get other numeric columns that might be useful
+        other_numeric_cols = [col for col in df.columns if col not in ['player_name', 'opponent_name', '_match_date', 'surface', 'match_result'] 
+                             and col not in rolling_cols + player_cols + opponent_cols
+                             and df[col].dtype in ['int64', 'float64', 'Int64', 'Float64']]
+        
+        print(f"Adding {len(rolling_cols)} rolling features to career stats")
+        print(f"Adding {len(player_cols)} player-specific features to career stats")
+        print(f"Adding {len(opponent_cols)} opponent features to career stats")
+        print(f"Adding {len(other_numeric_cols)} other numeric features to career stats")
+        
+        # Add latest rolling stats for each player
+        if rolling_cols:
+            # Get the latest values for each rolling column per player
+            latest_rolling_data = []
+            for player in df['player_name'].unique():
+                player_data = df[df['player_name'] == player].sort_values('_match_date')
+                latest_values = {}
+                for col in rolling_cols:
+                    non_null_values = player_data[col].dropna()
+                    latest_values[col] = non_null_values.iloc[-1] if len(non_null_values) > 0 else np.nan
+                latest_values['player_name'] = player
+                latest_rolling_data.append(latest_values)
+            
+            latest_rolling = pd.DataFrame(latest_rolling_data)
+            
+            # Rename columns to indicate they're latest values
+            latest_rolling.columns = [f"latest_{col}" if col != 'player_name' else col for col in latest_rolling.columns]
+            career_basic = career_basic.merge(latest_rolling, on="player_name", how="left")
+        
+        # Add career averages for player-specific stats
+        if player_cols:
+            career_player_stats = df.groupby("player_name")[player_cols].mean().round(4)
+            career_player_stats.columns = [f"career_avg_{col}" for col in player_cols]
+            career_basic = career_basic.merge(career_player_stats, left_on="player_name", right_index=True, how="left")
+        
+        # Add career averages for opponent stats
+        if opponent_cols:
+            career_opponent_stats = df.groupby("player_name")[opponent_cols].mean().round(4)
+            career_opponent_stats.columns = [f"career_avg_{col}" for col in opponent_cols]
+            career_basic = career_basic.merge(career_opponent_stats, left_on="player_name", right_index=True, how="left")
+        
+        # Add career averages for other numeric stats
+        if other_numeric_cols:
+            career_other_stats = df.groupby("player_name")[other_numeric_cols].mean().round(4)
+            career_other_stats.columns = [f"career_avg_{col}" for col in other_numeric_cols]
+            career_basic = career_basic.merge(career_other_stats, left_on="player_name", right_index=True, how="left")
+        
+        # Surface-specific stats (keep existing logic)
         for surf in SURFACES:
-            surf_lower =SURFACES[surf].lower()
+            surf_lower = SURFACES[surf].lower()
             # Use exact match since surface is now properly mapped to strings
             surf_data = df[df["surface"] == surf].groupby("player_name").agg({
                 "won_match": ["count", "sum", "mean"],
@@ -571,19 +637,14 @@ class TennisPlayerAggregatorOptimized:
                 surf_data.columns = [f"{surf_lower}_matches", f"{surf_lower}_wins", f"{surf_lower}_win_rate", f"{surf_lower}_rolling_win_rate_latest"]
                 career_basic = career_basic.merge(surf_data, left_on="player_name", right_index=True, how="left")
         
-        # Serve stats
-        for stat in SERVE_COLS[:3]:
-            player_col = f"player_{stat}"
-            rolling_col = f"rolling_{stat}"
-            
-            if player_col in df.columns:
-                serve_stats = df.groupby("player_name").agg({
-                    player_col: "mean",
-                    rolling_col: lambda x: x.dropna().iloc[-1] if not x.dropna().empty else np.nan
-                }).round(4)
-                
-                serve_stats.columns = [f"career_avg_{stat}", f"latest_rolling_{stat}"]
-                career_basic = career_basic.merge(serve_stats, left_on="player_name", right_index=True, how="left")
+        # Add latest values for basic rolling stats (these might have been overwritten)
+        latest_basic_rolling = df.groupby("player_name").agg({
+            "rolling_win_rate": lambda x: x.dropna().iloc[-1] if not x.dropna().empty else np.nan,
+            "rolling_best_rank": lambda x: x.dropna().iloc[-1] if not x.dropna().empty else np.nan
+        }).round(4)
+        
+        latest_basic_rolling.columns = ["latest_rolling_win_rate", "latest_rolling_best_rank"]
+        career_basic = career_basic.merge(latest_basic_rolling, left_on="player_name", right_index=True, how="left")
         
         print("✓ Career stats aggregated")
         return career_basic
