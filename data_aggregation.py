@@ -30,8 +30,10 @@ SERVE_COLS: List[str] = [
     "serve_games",
     "bp_saved",
     "bp_faced",
+    "ace",
+    "df",
 ]
-CRITICAL_COLS = ["rolling_win_rate", "rolling_best_rank"]
+CRITICAL_COLS = ["rolling_win_rate"]
 DEFAULT_SIMILARITY_FEATS = ["player_rank", "age", "height", "hand"]
 
 
@@ -234,7 +236,6 @@ def _process_player_rolling(args) -> pd.DataFrame:
         
         # Basic rolling stats
         grp["rolling_win_rate"] = grp["won_match"].rolling(window, min_periods=1).mean()
-        grp["rolling_best_rank"] = pd.to_numeric(grp["player_rank"], errors="coerce").rolling(window, min_periods=1).min()
         
         # Surface-specific win rates
         for surf in SURFACES:
@@ -244,8 +245,8 @@ def _process_player_rolling(args) -> pd.DataFrame:
             if mask.any():
                 grp.loc[mask, col] = grp.loc[mask, "won_match"].rolling(window, min_periods=1).mean().values
         
-        # Serve stats
-        for stat in SERVE_COLS[:3]:
+        # Serve stats including bp_saved, bp_faced, and aces
+        for stat in ["1st_serve_in", "1st_serve_won", "2nd_serve_won", "bp_saved", "bp_faced", "ace", "df"]:
             player_col = f"player_{stat}"
             if player_col in grp.columns:
                 grp[f"rolling_{stat}"] = pd.to_numeric(grp[player_col], errors="coerce").rolling(window, min_periods=1).mean()
@@ -457,12 +458,16 @@ class TennisPlayerAggregatorOptimized:
             "w_SvGms": "winner_serve_games",
             "w_bpSaved": "winner_bp_saved",
             "w_bpFaced": "winner_bp_faced",
+            "w_ace": "winner_ace",
             "l_1stIn": "loser_1st_serve_in",
             "l_1stWon": "loser_1st_serve_won",
             "l_2ndWon": "loser_2nd_serve_won",
             "l_SvGms": "loser_serve_games",
             "l_bpSaved": "loser_bp_saved",
             "l_bpFaced": "loser_bp_faced",
+            "l_ace": "loser_ace",
+            "w_df": "winner_df",
+            "l_df": "loser_df",
         }
         self.combined_data.rename(columns={k: v for k, v in mapping.items() if k in self.combined_data.columns}, inplace=True)
 
@@ -508,7 +513,6 @@ class TennisPlayerAggregatorOptimized:
     # 3. Optimized rolling stats
     # ------------------------------------------------------------------
 
-        # Also update the vectorized rolling stats function to handle the surface conversion:
     def _calculate_rolling_stats_vectorized(self, df: pd.DataFrame, window: int) -> pd.DataFrame:
         """Vectorized rolling calculations - much faster than player-by-player loops"""
         print("Calculating rolling stats (vectorized)...")
@@ -520,29 +524,18 @@ class TennisPlayerAggregatorOptimized:
             lambda x: x.rolling(window, min_periods=1).mean()
         )
         
-        df["rolling_best_rank"] = df.groupby("player_name")["player_rank"].transform(
-            lambda x: pd.to_numeric(x, errors="coerce").rolling(window, min_periods=1).min()
-        )
-        
         # Surface-specific rolling win rates
         for surf in SURFACES:
             surf_lower =SURFACES[surf].lower()
-            # Now surface should be string after clean_dataframe conversion
-            mask = df["surface"] == surf  # Simplified comparison since surface is now properly mapped
-            
-            # Create a temporary column for surface-specific wins
+            mask = df["surface"] == surf
             df[f"_temp_{surf_lower}_win"] = df["won_match"].where(mask)
-            
-            # Calculate rolling mean for each player on this surface
             df[f"rolling_win_rate_{surf_lower}"] = df.groupby("player_name")[f"_temp_{surf_lower}_win"].transform(
                 lambda x: x.rolling(window, min_periods=1).mean()
             )
-            
-            # Clean up temporary column
             df.drop(f"_temp_{surf_lower}_win", axis=1, inplace=True)
         
-        # Serve stats rolling means
-        for stat in SERVE_COLS[:3]:
+        # Serve stats including bp_saved, bp_faced, and aces
+        for stat in ["1st_serve_in", "1st_serve_won", "2nd_serve_won", "bp_saved", "bp_faced", "ace", "df"]:
             player_col = f"player_{stat}"
             if player_col in df.columns:
                 df[f"rolling_{stat}"] = df.groupby("player_name")[player_col].transform(
@@ -552,9 +545,12 @@ class TennisPlayerAggregatorOptimized:
         print("✓ Rolling stats calculated")
         return df
 
-    # Update the career aggregation function as well:
+    # ------------------------------------------------------------------
+    # 4. Career aggregation (MODIFIED)
+    # ------------------------------------------------------------------
+
     def _aggregate_career_stats_vectorized(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Vectorized career aggregation - much faster than manual loops"""
+        """Vectorized career aggregation - modified to remove surface rolling win rates and add bp stats"""
         print("Aggregating career stats...")
         
         # Basic aggregations
@@ -568,15 +564,18 @@ class TennisPlayerAggregatorOptimized:
         career_basic.columns = ["career_start", "career_end", "total_matches", "total_wins", "career_win_rate", "highest_ranking"]
         career_basic = career_basic.reset_index()
         
-        # Get all rolling columns (excluding basic ones already handled)
-        rolling_cols = [col for col in df.columns if col.startswith('rolling_') and col not in ['rolling_win_rate', 'rolling_best_rank']]
+        # Add overall average win rate (same as career_win_rate but explicitly named)
+        career_basic["avg_win_rate"] = career_basic["career_win_rate"]
+        
+        # Get rolling columns (excluding surface-specific rolling win rates and basic rolling_win_rate)
+        rolling_cols = [col for col in df.columns if col.startswith('rolling_') 
+                       and col not in ['rolling_win_rate'] 
+                       and not any(surf in col for surf in ['hard', 'clay', 'grass', 'carpet'])]
         
         # Get all player-specific columns (like player_1st_serve_in, etc.)
         player_cols = [col for col in df.columns if col.startswith('player_') and col not in ['player_name', 'player_rank']]
-        
         # Get all opponent columns
         opponent_cols = [col for col in df.columns if col.startswith('opponent_') and col not in ['opponent_name']]
-        
         # Get other numeric columns that might be useful
         other_numeric_cols = [col for col in df.columns if col not in ['player_name', 'opponent_name', '_match_date', 'surface', 'match_result'] 
                              and col not in rolling_cols + player_cols + opponent_cols
@@ -587,9 +586,8 @@ class TennisPlayerAggregatorOptimized:
         print(f"Adding {len(opponent_cols)} opponent features to career stats")
         print(f"Adding {len(other_numeric_cols)} other numeric features to career stats")
         
-        # Add latest rolling stats for each player
+        # Add latest rolling stats for each player (excluding rolling_win_rate and surface-specific)
         if rolling_cols:
-            # Get the latest values for each rolling column per player
             latest_rolling_data = []
             for player in df['player_name'].unique():
                 player_data = df[df['player_name'] == player].sort_values('_match_date')
@@ -599,10 +597,7 @@ class TennisPlayerAggregatorOptimized:
                     latest_values[col] = non_null_values.iloc[-1] if len(non_null_values) > 0 else np.nan
                 latest_values['player_name'] = player
                 latest_rolling_data.append(latest_values)
-            
             latest_rolling = pd.DataFrame(latest_rolling_data)
-            
-            # Rename columns to indicate they're latest values
             latest_rolling.columns = [f"latest_{col}" if col != 'player_name' else col for col in latest_rolling.columns]
             career_basic = career_basic.merge(latest_rolling, on="player_name", how="left")
         
@@ -612,44 +607,65 @@ class TennisPlayerAggregatorOptimized:
             career_player_stats.columns = [f"career_avg_{col}" for col in player_cols]
             career_basic = career_basic.merge(career_player_stats, left_on="player_name", right_index=True, how="left")
         
-        # Add career averages for opponent stats
+        # Add career averages for opponent stats (remove career_avg_opponent_rank)
         if opponent_cols:
             career_opponent_stats = df.groupby("player_name")[opponent_cols].mean().round(4)
-            career_opponent_stats.columns = [f"career_avg_{col}" for col in opponent_cols]
+            # Remove opponent_rank if present
+            if 'opponent_rank' in career_opponent_stats.columns:
+                career_opponent_stats = career_opponent_stats.drop(columns=['opponent_rank'])
+            career_opponent_stats.columns = [f"career_avg_{col}" for col in career_opponent_stats.columns]
             career_basic = career_basic.merge(career_opponent_stats, left_on="player_name", right_index=True, how="left")
         
-        # Add career averages for other numeric stats
+        # Add career averages for other numeric stats (remove won_match)
         if other_numeric_cols:
-            career_other_stats = df.groupby("player_name")[other_numeric_cols].mean().round(4)
-            career_other_stats.columns = [f"career_avg_{col}" for col in other_numeric_cols]
-            career_basic = career_basic.merge(career_other_stats, left_on="player_name", right_index=True, how="left")
+            filtered_other_cols = [col for col in other_numeric_cols if col != 'won_match']
+            if filtered_other_cols:
+                career_other_stats = df.groupby("player_name")[filtered_other_cols].mean().round(4)
+                career_other_stats.columns = [f"career_avg_{col}" for col in filtered_other_cols]
+                career_basic = career_basic.merge(career_other_stats, left_on="player_name", right_index=True, how="left")
         
-        # Surface-specific stats (keep existing logic)
-        for surf in SURFACES:
-            surf_lower = SURFACES[surf].lower()
-            # Use exact match since surface is now properly mapped to strings
-            surf_data = df[df["surface"] == surf].groupby("player_name").agg({
-                "won_match": ["count", "sum", "mean"],
-                f"rolling_win_rate_{surf_lower}": lambda x: x.dropna().iloc[-1] if not x.dropna().empty else np.nan
+        # Surface-specific stats (win rates only, remove matches and wins)
+        for surf_num, surf_name in SURFACES.items():
+            surf_lower = surf_name.lower()
+            # Match both numeric and string surface values
+            surf_data = df[df["surface"].isin([surf_num, surf_name])].groupby("player_name").agg({
+                "won_match": "mean"
             }).round(4)
-            
             if not surf_data.empty:
-                surf_data.columns = [f"{surf_lower}_matches", f"{surf_lower}_wins", f"{surf_lower}_win_rate", f"{surf_lower}_rolling_win_rate_latest"]
+                surf_data.columns = [f"{surf_lower}_win_rate"]
                 career_basic = career_basic.merge(surf_data, left_on="player_name", right_index=True, how="left")
         
-        # Add latest values for basic rolling stats (these might have been overwritten)
-        latest_basic_rolling = df.groupby("player_name").agg({
-            "rolling_win_rate": lambda x: x.dropna().iloc[-1] if not x.dropna().empty else np.nan,
-            "rolling_best_rank": lambda x: x.dropna().iloc[-1] if not x.dropna().empty else np.nan
-        }).round(4)
+        # Add latest rolling average for aces if available
+        if 'rolling_ace' in df.columns:
+            latest_ace_data = df.groupby("player_name").agg({
+                "rolling_ace": lambda x: x.dropna().iloc[-1] if not x.dropna().empty else np.nan
+            }).round(4)
+            latest_ace_data.columns = ["latest_rolling_avg_ace"]
+            career_basic = career_basic.merge(latest_ace_data, left_on="player_name", right_index=True, how="left")
         
-        latest_basic_rolling.columns = ["latest_rolling_win_rate", "latest_rolling_best_rank"]
-        career_basic = career_basic.merge(latest_basic_rolling, left_on="player_name", right_index=True, how="left")
+        # Add career average for aces if available
+        if 'player_ace' in df.columns:
+            avg_ace_data = df.groupby("player_name")["player_ace"].mean().round(4)
+            avg_ace_data.name = "avg_ace"
+            career_basic = career_basic.merge(avg_ace_data, left_on="player_name", right_index=True, how="left")
+        
+        # Add latest rolling average for double faults if available
+        if 'rolling_df' in df.columns:
+            latest_df_data = df.groupby("player_name").agg({
+                "rolling_df": lambda x: x.dropna().iloc[-1] if not x.dropna().empty else np.nan
+            }).round(4)
+            latest_df_data.columns = ["latest_rolling_avg_df"]
+            career_basic = career_basic.merge(latest_df_data, left_on="player_name", right_index=True, how="left")
+        
+        # Add career average for double faults if available
+        if 'player_df' in df.columns:
+            avg_df_data = df.groupby("player_name")["player_df"].mean().round(4)
+            avg_df_data.name = "avg_df"
+            career_basic = career_basic.merge(avg_df_data, left_on="player_name", right_index=True, how="left")
         
         print("✓ Career stats aggregated")
         return career_basic
 
-    
     def _calculate_rolling_stats_parallel(self, df: pd.DataFrame, window: int, max_workers: Optional[int] = None) -> pd.DataFrame:
         """Parallel rolling calculations for large datasets"""
         print("Calculating rolling stats (parallel)...")
@@ -692,7 +708,7 @@ class TennisPlayerAggregatorOptimized:
         print("\nTop missing columns (%):\n", summary.head(15))
 
 ###############################################################################
-# CLI
+# Run
 ###############################################################################
 
 if __name__ == "__main__":

@@ -112,30 +112,29 @@ def upload_player_statistics():
             # Extract values using dot notation for itertuples, more efficient than iterrows
             conn.execute(
                 players.update().where(players.c.name == row.player_name).values(
-                    rank=(None if pd.isna(row.highest_ranking) else row.highest_ranking), 
-                    hard_court_wr=row.hard_rolling_win_rate_latest - row.hard_win_rate,
-                    relative_hard_wr=(row.hard_rolling_win_rate_latest - row.hard_win_rate) / max(row.hard_win_rate, 0.1),
-                    grass_court_wr=row.grass_rolling_win_rate_latest - row.grass_win_rate, 
-                    relative_grass_wr=(row.grass_rolling_win_rate_latest - row.grass_win_rate) / max(row.grass_win_rate, 0.1),
-                    clay_court_wr=row.clay_rolling_win_rate_latest - row.clay_win_rate, 
-                    relative_clay_wr=(row.clay_rolling_win_rate_latest - row.clay_win_rate) / max(row.clay_win_rate, 0.1),
-                    overall_wr=row.career_win_rate, 
-                    first_in=(None if pd.isna(row.latest_rolling_1st_serve_in) or pd.isna(row.career_avg_1st_serve_in)
-                        else row.latest_rolling_1st_serve_in - row.career_avg_1st_serve_in),
-                    relative_first_in=(None if pd.isna(row.latest_rolling_1st_serve_in) or pd.isna(row.career_avg_1st_serve_in)
-                        else (row.latest_rolling_1st_serve_in - row.career_avg_1st_serve_in) / max(row.career_avg_1st_serve_in, 0.1)),
-                    first_won=(None if pd.isna(row.latest_rolling_1st_serve_won) or pd.isna(row.career_avg_1st_serve_won)
-                        else row.latest_rolling_1st_serve_won - row.career_avg_1st_serve_won),
-                    relative_first_won=(None if pd.isna(row.latest_rolling_1st_serve_won) or pd.isna(row.career_avg_1st_serve_won)
-                        else (row.latest_rolling_1st_serve_won - row.career_avg_1st_serve_won) / max(row.career_avg_1st_serve_won, 0.1)),
-                    second_won=(None if pd.isna(row.latest_rolling_2nd_serve_won) or pd.isna(row.career_avg_2nd_serve_won)
-                        else row.latest_rolling_2nd_serve_won - row.career_avg_2nd_serve_won),
-                    relative_second_won=(None if pd.isna(row.latest_rolling_2nd_serve_won) or pd.isna(row.career_avg_2nd_serve_won)
-                        else (row.latest_rolling_2nd_serve_won - row.career_avg_2nd_serve_won) / max(row.career_avg_2nd_serve_won, 0.1))
+                    first_in=row.career_avg_player_1st_serve_in,
+                    first_won=row.career_avg_player_1st_serve_won,
+                    second_won=row.career_avg_player_2nd_serve_won,
+                    avg_ace=row.career_avg_player_ace,
+                    avg_df=row.career_avg_player_df,
+                    avg_bp_faced=row.career_avg_player_bp_faced,
+                    avg_bp_saved=row.career_avg_player_bp_saved,
+                    relative_first_in=row.latest_rolling_1st_serve_in,
+                    relative_first_won=row.latest_rolling_1st_serve_won,
+                    relative_second_won=row.latest_rolling_2nd_serve_won,
+                    relative_avg_ace=row.latest_rolling_ace,
+                    relative_avg_df=row.latest_rolling_df,
+                    relative_bp_faced=row.latest_rolling_bp_faced,
+                    relative_bp_saved=row.latest_rolling_bp_saved,
+                    overall_wr=row.avg_win_rate,
+                    hard_court_wr=row.hard_win_rate,
+                    grass_court_wr=row.grass_win_rate,
+                    clay_court_wr=row.clay_win_rate,
+                    carpet_court_wr=row.carpet_win_rate,
                 )
             )
             conn.commit()
-            
+
 
 upload_player_statistics()
 
