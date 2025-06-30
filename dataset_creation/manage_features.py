@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 from tqdm import tqdm
-from sqlalchemy import insert, create_engine, Table, MetaData, text
+from sqlalchemy import insert, create_engine, Table, MetaData, text, select
 
 import dotenv
 
@@ -135,6 +135,17 @@ def upload_player_statistics():
             )
             conn.commit()
 
+def retrieve_player_stats(name: str):
+    metadata = MetaData()
+    players = Table(player_table, metadata, autoload_with=sql_engine)
+    
+    with sql_engine.connect() as conn:
+        player = conn.execute(select(players).where(players.c.name == name))
+        row = player.fetchone()
+        return row
 
-upload_player_statistics()
+
+
+#upload_player_statistics()
+retrieve_player_stats("Roger Federer")
 

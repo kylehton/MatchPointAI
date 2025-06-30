@@ -7,3 +7,5 @@
 /data/other/
 /data/README.md
 /data/computed/
+
+*/__pycache__/
