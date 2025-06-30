@@ -2,8 +2,7 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split, StratifiedKFold, RandomizedSearchCV, cross_val_score
 from sklearn.metrics import classification_report
-from xgboost import XGBClassifier, plot_importance
-from sklearn.feature_selection import SelectKBest, f_classif
+from xgboost import XGBClassifier
 import warnings
 from create_feature_set import create_feature_set
 import joblib
@@ -30,11 +29,10 @@ scale_pos_weight = neg / pos
 # Split into train/test
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=6, stratify=y)
 
-# Step 4: Define the model w/ early stop
+# Define the model
 base_model = XGBClassifier(
     objective="binary:logistic",
     eval_metric="logloss",
-    use_label_encoder=False,
     scale_pos_weight=scale_pos_weight,
     n_estimators=1000
 )
@@ -63,12 +61,11 @@ search = RandomizedSearchCV(
     random_state=6
 )
 
-# Step 6: Fit with early stopping
+# Fit w params
 print("Starting hyperparameter search...")
 search.fit(
     X_train, y_train,
     eval_set=[(X_test, y_test)],
-    early_stopping_rounds=25,
     verbose=False
 )
 
