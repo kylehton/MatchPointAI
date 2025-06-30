@@ -13,6 +13,9 @@ df = create_feature_set()
 
 # Define feature columns (all the diff_ columns)
 feature_cols = [col for col in df.columns if col.startswith('diff_')]
+# Remove any old surface winrate diffs if present, only keep diff_surface_wr
+feature_cols = [col for col in feature_cols if not (
+    col.startswith('diff_hard_court_wr') or col.startswith('diff_clay_court_wr') or col.startswith('diff_grass_court_wr') or col.startswith('diff_carpet_court_wr'))]
 
 # Select features and target
 X = df[feature_cols]
@@ -38,6 +41,7 @@ base_model = XGBClassifier(
 )
 
 # Hyperparameter tuning using RandomizedSearchCV
+# if needed, decrease some params for slower learning
 param_dist = {
     "max_depth": [3, 5, 7, 9],
     "learning_rate": [0.01, 0.05, 0.1, 0.2],

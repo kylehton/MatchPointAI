@@ -6,6 +6,8 @@ import os
 from sklearn.model_selection import train_test_split
 import glob
 import numpy as np
+from dotenv import load_dotenv
+load_dotenv()
 
 # Connect to your database
 sql_engine = create_engine(os.getenv('POSTGRES_NEON_STRING'))
@@ -60,9 +62,14 @@ def create_feature_set():
         'first_in', 'first_won', 'second_won', 'avg_ace', 'avg_df', 
         'avg_bp_faced', 'avg_bp_saved', 'relative_first_in', 'relative_first_won', 
         'relative_second_won', 'relative_avg_ace', 'relative_avg_df', 
-        'relative_bp_faced', 'relative_bp_saved', 'overall_wr', 'hard_court_wr', 
-        'grass_court_wr', 'clay_court_wr', 'carpet_court_wr', 'hand', 'height'
+        'relative_bp_faced', 'relative_bp_saved', 'overall_wr', 'hand', 'height'
     ]
+    surface_wr_map = {
+        'Hard': 'hard_court_wr',
+        'Clay': 'clay_court_wr',
+        'Grass': 'grass_court_wr',
+        'Carpet': 'carpet_court_wr'
+    }
     
     # Process each match
     for _, match in tqdm.tqdm(matches.iterrows(), total=len(matches), desc="Processing matches"):
@@ -119,6 +126,20 @@ def create_feature_set():
                 player_b_val = 0
                 
             feature_row[f'diff_{col}'] = player_a_val - player_b_val
+        
+        # Add only the relevant surface winrate diff
+        match_surface = match.get('surface', '')
+        wr_col = surface_wr_map.get(str(match_surface).title())
+        if wr_col:
+            player_a_wr = player_a_stats.get(wr_col, 0)
+            player_b_wr = player_b_stats.get(wr_col, 0)
+            if pd.isna(player_a_wr):
+                player_a_wr = 0
+            if pd.isna(player_b_wr):
+                player_b_wr = 0
+            feature_row['diff_surface_wr'] = player_a_wr - player_b_wr
+        else:
+            feature_row['diff_surface_wr'] = 0
         
         matchup_features.append(feature_row)
     
