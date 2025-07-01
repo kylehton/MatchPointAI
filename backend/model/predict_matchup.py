@@ -12,14 +12,16 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dataset_creation.manage_features import retrieve_player_stats
 
 # Load the trained model
-model = joblib.load("model/xgb_model.joblib")
+# 6795 -> cv accuracy (67.95)
+# 7450 -> roc auc score (74.50)
+model = joblib.load("model/xgb_model_6795_7450.joblib")
 
 # Connect to database
 sql_engine = create_engine(os.getenv('POSTGRES_NEON_STRING'))
 player_table = os.getenv("PLAYER_TABLE")
 
 
-def predict_matchup(player_a_name, player_b_name, surface) -> dict:
+def predict_matchup(player_a_name: str, player_b_name: str, surface: str) -> dict:
     # Get stats for both players
     try:
         player_a_stats = retrieve_player_stats(player_a_name)
@@ -81,3 +83,10 @@ def predict_matchup(player_a_name, player_b_name, surface) -> dict:
         winner_probability = 1 - win_probability
     return {"winner": winner, "win_probability": round(float(winner_probability*100), 2)}
 
+result1 = predict_matchup("Roger Federer", "Rafael Nadal", "Clay")
+result2 = predict_matchup("Roger Federer", "Rafael Nadal", "Hard")
+result3 = predict_matchup("Roger Federer", "Rafael Nadal", "Grass")
+
+print("Clay:", result1['winner'], result1['win_probability'])
+print("Hard:", result2['winner'], result2['win_probability'])
+print("Grass:", result3['winner'], result3['win_probability'])

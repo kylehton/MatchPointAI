@@ -11,11 +11,11 @@ def ping():
     return {"Status": "MatchPointAI pinging back!"}
 
 @app.post("/predict")
-async def predict_match(p1: str, p2: str):
+async def predict_match(p1: str, p2: str, surface: str):
     print("[PROCESS]: Predicting match with XGBoost Model...")
     
     try:
-        prediction = predict_matchup(p1, p2)
+        prediction = predict_matchup(p1, p2, surface)
         if "error" in prediction:
             return {"error": prediction["error"]}
         return prediction

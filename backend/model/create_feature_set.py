@@ -118,23 +118,18 @@ def create_feature_set():
         for col in stat_columns:
             player_a_val = player_a_stats.get(col, 0)
             player_b_val = player_b_stats.get(col, 0)
-            
-            # Handle NaN values
             if pd.isna(player_a_val):
                 player_a_val = 0
             if pd.isna(player_b_val):
                 player_b_val = 0
-                
             feature_row[f'diff_{col}'] = player_a_val - player_b_val
-        
-        # Add only the relevant surface winrate diff
         match_surface = match.get('surface', '')
         wr_col = surface_wr_map.get(str(match_surface).title())
         if wr_col:
             player_a_wr = player_a_stats.get(wr_col, 0)
             player_b_wr = player_b_stats.get(wr_col, 0)
             if pd.isna(player_a_wr):
-                player_a_wr = 0
+             player_a_wr = 0
             if pd.isna(player_b_wr):
                 player_b_wr = 0
             feature_row['diff_surface_wr'] = player_a_wr - player_b_wr
@@ -163,7 +158,7 @@ X = df[feature_cols]
 y = df['target']
 
 # Split into train/test
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=6, stratify=y)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.15, random_state=6, stratify=y)
 
 print(f"Training set size: {len(X_train)}")
 print(f"Test set size: {len(X_test)}")
@@ -172,3 +167,4 @@ print(f"Number of features: {len(feature_cols)}")
 # Save the processed data
 df.to_csv('processed_matchups.csv', index=False)
 print("Saved processed matchups to processed_matchups.csv")
+
