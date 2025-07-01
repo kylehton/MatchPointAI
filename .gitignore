@@ -1,15 +1,14 @@
-backend/.venv/
+server/.venv/
 .env
-backend/cache
+server/cache
 
-backend/data/.gitattributes
-backend/data/matches_data_dictionary.txt
-backend/data/other/
-backend/data/README.md
+server/data/.gitattributes
+server/data/matches_data_dictionary.txt
+server/data/other/
+server/data/README.md
 
 */__pycache__/
 __pycache__
 
 .DS_Store
 
-/MIGHTBEBESTMODEL/
