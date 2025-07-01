@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split, StratifiedKFold, RandomizedSearchCV, cross_val_score
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, roc_auc_score
 from xgboost import XGBClassifier
 import warnings
 from create_feature_set import create_feature_set
@@ -14,8 +14,8 @@ df = create_feature_set()
 # Define feature columns (all the diff_ columns)
 feature_cols = [col for col in df.columns if col.startswith('diff_')]
 # Remove any old surface winrate diffs if present, only keep diff_surface_wr
-feature_cols = [col for col in feature_cols if not (
-    col.startswith('diff_hard_court_wr') or col.startswith('diff_clay_court_wr') or col.startswith('diff_grass_court_wr') or col.startswith('diff_carpet_court_wr'))]
+#feature_cols = [col for col in feature_cols if not (
+#    col.startswith('diff_hard_court_wr') or col.startswith('diff_clay_court_wr') or col.startswith('diff_grass_court_wr') or col.startswith('diff_carpet_court_wr'))]
 
 # Select features and target
 X = df[feature_cols]
@@ -30,7 +30,7 @@ neg, pos = np.bincount(y)
 scale_pos_weight = neg / pos
 
 # Split into train/test
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=6, stratify=y)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1, random_state=6, stratify=y)
 
 # Define the model
 base_model = XGBClassifier(
@@ -43,22 +43,32 @@ base_model = XGBClassifier(
 # Hyperparameter tuning using RandomizedSearchCV
 # if needed, decrease some params for slower learning
 param_dist = {
-    "max_depth": [3, 5, 7, 9],
-    "learning_rate": [0.01, 0.05, 0.1, 0.2],
-    "subsample": [0.6, 0.8, 1.0],
-    "colsample_bytree": [0.6, 0.8, 1.0],
-    "gamma": [0, 1, 5],
-    "reg_alpha": [0, 0.1, 1],
-    "reg_lambda": [1, 1.5, 2]
+    "max_depth": [3, 4, 5, 6, 7, 8, 9],
+    "learning_rate": [0.005, 0.01, 0.02, 0.05],
+    "subsample": [0.6, 0.7, 0.8, 0.9, 1.0],
+    "colsample_bytree": [0.6, 0.7, 0.8, 0.9, 1.0],
+    "gamma": [0, 0.5, 1, 2, 5],
+    "reg_alpha": [0, 0.01, 0.1, 1, 2],
+    "reg_lambda": [0.5, 1, 1.5, 2, 2.5]
 }
+#param_dist = {
+#    "max_depth": [3, 5, 7],
+#    "learning_rate": [0.01, 0.02, 0.05],
+#    "subsample": [0.6, 0.8, 1.0],
+#    "colsample_bytree": [0.6, 0.8, 1.0],
+#    "gamma": [0, 1, 5],
+#    "reg_alpha": [0, 0.01, 0.1, 1],
+#    "reg_lambda": [0.5, 1, 1.5]
+#}
 
-cv = StratifiedKFold(n_splits=5)
+
+cv = StratifiedKFold(n_splits=10)
 
 search = RandomizedSearchCV(
     estimator=base_model,
     param_distributions=param_dist,
-    n_iter=40,
-    scoring="accuracy",
+    n_iter=100,
+    scoring="accuracy", # roc_auc or accuracy
     cv=cv,
     verbose=1,
     n_jobs=-1,
@@ -97,5 +107,8 @@ print(f"Mean CV score: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
 
 print("\nClassification Report:")
 print(classification_report(y_test, model.predict(X_test)))
+y_proba = model.predict_proba(X_test)[:, 1]
+roc_auc = roc_auc_score(y_test, y_proba)
+print(f"ROC AUC Score: {roc_auc:.4f}")
 
 joblib.dump(model, "xgb_model.joblib")
