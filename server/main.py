@@ -5,10 +5,16 @@ from mangum import Mangum
 from sqlalchemy import create_engine, text
 import os
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 load_dotenv()
 
 app = FastAPI()
+
+class PredictionRequest(BaseModel):
+    p1: str
+    p2: str
+    surface: str
 
 # Database connection
 sql_engine = create_engine(os.getenv('POSTGRES_NEON_STRING'))
@@ -31,11 +37,11 @@ async def get_players():
         return {"error": f"Failed to fetch players: {str(e)}"}
 
 @app.post("/predict")
-async def predict_match(p1: str, p2: str, surface: str):
+async def predict_match(request: PredictionRequest):
     print("[PROCESS]: Predicting match with XGBoost Model...")
     
     try:
-        prediction = predict_matchup(p1, p2, surface)
+        prediction = predict_matchup(request.p1, request.p2, request.surface)
         if "error" in prediction:
             return {"error": prediction["error"]}
         return prediction
