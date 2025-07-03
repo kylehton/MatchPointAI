@@ -26,7 +26,6 @@ def ping():
 
 @app.get("/players")
 async def get_players():
-    """Get all players from the database"""
     try:
         query = f"SELECT name FROM {player_table} ORDER BY name"
         with sql_engine.connect() as conn:
@@ -35,6 +34,17 @@ async def get_players():
         return {"players": players}
     except Exception as e:
         return {"error": f"Failed to fetch players: {str(e)}"}
+
+    
+@app.get("/get_player_stats")
+async def get_player_stats(name: str):
+    try:
+        query = f"SELECT * FROM {player_table} WHERE name = {name}"
+        with sql_engine.connect() as conn:
+            result = conn.execute(text(query))
+            return result.fetchall()
+    except Exception as e:
+        return {"error": f"Failed to fetch player stats: {str(e)}"}
 
 @app.post("/predict")
 async def predict_match(request: PredictionRequest):
