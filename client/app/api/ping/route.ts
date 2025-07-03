@@ -4,7 +4,7 @@ export async function GET() {
   try {
     // Replace with your actual FastAPI server URL local:'http://127.0.0.1:8000'
     const apiUrl = process.env.FASTAPI_URL || 'http://127.0.0.1:8000'
-    const response = await fetch(`${apiUrl}/players`)
+    const response = await fetch(`${apiUrl}`)
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
