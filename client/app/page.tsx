@@ -48,7 +48,8 @@ export default function TennisPredictionApp() {
         const data = await response.json();
         setPlayers(data.players || []);
       } catch (err) {
-        throw new Error("Could not load players.");
+        console.log(err)
+        throw new Error('Could not load players.');
       }
     };
     fetchPlayers();
