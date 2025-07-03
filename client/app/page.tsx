@@ -24,8 +24,6 @@ export default function TennisPredictionApp() {
   const [predictionResult, setPredictionResult] = useState<PredictionResult | null>(null)
   const [predictionError, setPredictionError] = useState("")
   const [players, setPlayers] = useState<string[]>([])
-  const [loadingPlayers, setLoadingPlayers] = useState(true)
-  const [playersError, setPlayersError] = useState("")
   const subpageRef = useRef<HTMLDivElement>(null);
 
   // Lock scroll on component mount
@@ -45,16 +43,12 @@ export default function TennisPredictionApp() {
   useEffect(() => {
     const fetchPlayers = async () => {
       try {
-        setLoadingPlayers(true);
-        setPlayersError("");
         const response = await fetch("/api/players");
         if (!response.ok) throw new Error("Failed to fetch players");
         const data = await response.json();
         setPlayers(data.players || []);
       } catch (err) {
-        setPlayersError("Could not load players.");
-      } finally {
-        setLoadingPlayers(false);
+        throw new Error("Could not load players.");
       }
     };
     fetchPlayers();
