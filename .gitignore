@@ -14,3 +14,4 @@ __pycache__
 
 server/deploy-lambda.sh
 server/.dockerignore
+client/app/players.txt
