@@ -1,4 +1,4 @@
-# MatchPointAI Frontend Client
+# MatchPointAI Front-end Client
 
 A modern, responsive Next.js web application for tennis match prediction. Built with TypeScript, Tailwind CSS, and Radix UI components, this frontend provides an intuitive interface for predicting tennis match outcomes using machine learning.
 
@@ -258,21 +258,4 @@ theme: {
 - **Font Loading**: Optimized font loading with `next/font`
 - **Bundle Analysis**: Use `npm run build` to analyze bundle size
 
-## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly on multiple devices
-5. Submit a pull request
-
-## 📞 Support
-
-For questions or issues:
-- Check the backend server documentation
-- Review the API integration guide
-- Create an issue in the repository
-
-## 📝 License
-
-This project is part of the MatchPointAI tennis prediction system.

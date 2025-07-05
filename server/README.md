@@ -136,43 +136,6 @@ The model uses 17 key player statistics to make predictions:
 4. Generate prediction using trained XGBoost model
 5. Return winner and confidence probability
 
-## 🐳 Docker Deployment
-
-### Build Docker Image
-```bash
-docker build -t matchpoint-ai .
-```
-
-### Run Locally with Docker
-```bash
-docker run -p 8000:8000 matchpoint-ai
-```
-
-## ☁️ AWS Lambda Deployment
-
-### Prerequisites
-- AWS CLI configured with appropriate permissions
-- ECR repository created
-- Lambda function configured
-
-### Deploy to AWS Lambda
-```bash
-chmod +x deploy-lambda.sh
-./deploy-lambda.sh
-```
-
-The deployment script will:
-1. Build the Docker image
-2. Tag and push to Amazon ECR
-3. Update the Lambda function with the new image
-
-### Configuration
-Update `deploy-lambda.sh` with your AWS configuration:
-- `AWS_REGION`: Your AWS region
-- `ACCOUNT_ID`: Your AWS account ID
-- `REPO_NAME`: ECR repository name
-- `LAMBDA_FUNCTION_NAME`: Lambda function name
-
 ## 📊 Data Sources
 
 The system uses comprehensive tennis data including:
@@ -207,19 +170,3 @@ python -c "from model.predict_matchup import predict_matchup; print(predict_matc
 |----------|-------------|----------|
 | `POSTGRES_NEON_STRING` | PostgreSQL connection string | Yes |
 | `PLAYER_TABLE` | Database table name for player data | Yes |
-
-## 📝 License
-
-This project is part of the MatchPointAI tennis prediction system.
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## 📞 Support
-
-For questions or issues, please refer to the main project documentation or create an issue in the repository.
